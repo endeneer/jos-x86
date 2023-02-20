@@ -19,18 +19,18 @@ readline(const char *prompt)
 		if (c < 0) {
 			cprintf("read error: %e\n", c);
 			return NULL;
-		} else if ((c == '\b' || c == '\x7f') && i > 0) {
+		} else if ((c == '\b' || c == '\x7f') && i > 0) { // [BACKSPACE] or [DEL]
 			if (echoing)
 				cputchar('\b');
 			i--;
-		} else if (c >= ' ' && i < BUFLEN-1) {
+		} else if (c >= ' ' && i < BUFLEN-1) { // printable ASCII characters
 			if (echoing)
 				cputchar(c);
 			buf[i++] = c;
-		} else if (c == '\n' || c == '\r') {
+		} else if (c == '\n' || c == '\r') { // newline
 			if (echoing)
 				cputchar('\n');
-			buf[i] = 0;
+			buf[i] = 0; // null the last character in the line and return the line
 			return buf;
 		}
 	}

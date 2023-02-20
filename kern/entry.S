@@ -33,6 +33,9 @@
 .long MULTIBOOT_HEADER_FLAGS
 .long CHECKSUM
 
+# Note: '_start' is a special symbol, it will affect the e_entry
+# it is like implicit -e _start
+# _start is used by the default Binutils' ld linker script as the entry point
 # '_start' specifies the ELF entry point.  Since we haven't set up
 # virtual memory when the bootloader enters this code, we need the
 # bootloader to jump to the *physical* address of the entry point.
@@ -65,12 +68,17 @@ entry:
 	# (why is this okay?).  Jump up above KERNBASE before entering
 	# C code.
 	mov	$relocated, %eax
+	# Asterisk: absolute indirect near jump, it is not dereference LOL
 	jmp	*%eax
+	# The whole point of relocated: is just to jump up to KERNBASE after done setting up paging
+	# because when we enter entry, we are using the hardcoded _start
+	# that is, this line in main.c jmp to _start (a physical address) instead of virtual address 0xF something
+	# ((void (*)(void)) (ELFHDR->e_entry))(); where e_entry = _start
 relocated:
 
 	# Clear the frame pointer register (EBP)
 	# so that once we get into debugging C code,
-	# stack backtraces will be terminated properly.
+	# stack backtraces (Lab 1) will be terminated properly.
 	movl	$0x0,%ebp			# nuke frame pointer
 
 	# Set the stack pointer
@@ -79,7 +87,7 @@ relocated:
 	# now to C code
 	call	i386_init
 
-	# Should never get here, but in case we do, just spin.
+	# Should never get here (calling i386_init will drop us into monitor which is an infinite while loop, and the runcmd never actually return -1, only 0), but in case we do, just spin.
 spin:	jmp	spin
 
 
@@ -90,7 +98,7 @@ spin:	jmp	spin
 	.p2align	PGSHIFT		# force page alignment
 	.globl		bootstack
 bootstack:
-	.space		KSTKSIZE
-	.globl		bootstacktop   
+	.space		KSTKSIZE		# stack grows down from high to low address
+	.globl		bootstacktop   	# so let's start high
 bootstacktop:
 

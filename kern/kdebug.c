@@ -5,6 +5,7 @@
 
 #include <kern/kdebug.h>
 
+// see kernel.ld
 extern const struct Stab __STAB_BEGIN__[];	// Beginning of stabs table
 extern const struct Stab __STAB_END__[];	// End of stabs table
 extern const char __STABSTR_BEGIN__[];		// Beginning of string table
@@ -33,7 +34,7 @@ extern const char __STABSTR_END__[];		// End of string table
 //	*region_left > *region_right, then 'addr' is not contained in any
 //	matching stab.
 //
-//	For example, given these N_SO stabs:
+//	For example, given these N_SO stabs (objdump -G | grep SO):
 //		Index  Type   Address
 //		0      SO     f0100000
 //		13     SO     f0100040
@@ -52,7 +53,6 @@ stab_binsearch(const struct Stab *stabs, int *region_left, int *region_right,
 	       int type, uintptr_t addr)
 {
 	int l = *region_left, r = *region_right, any_matches = 0;
-
 	while (l <= r) {
 		int true_m = (l + r) / 2, m = true_m;
 
@@ -65,7 +65,7 @@ stab_binsearch(const struct Stab *stabs, int *region_left, int *region_right,
 		}
 
 		// actual binary search
-		any_matches = 1;
+		any_matches = 1; // there is one m inside [l,m] which satisfies stabs[m].n_type == type
 		if (stabs[m].n_value < addr) {
 			*region_left = m;
 			l = true_m + 1;
@@ -82,8 +82,9 @@ stab_binsearch(const struct Stab *stabs, int *region_left, int *region_right,
 	}
 
 	if (!any_matches)
-		*region_right = *region_left - 1;
+		*region_right = *region_left - 1; // intentionally make region_right < region_left
 	else {
+		// isn't this else block redundant since the binary search already handled region_left???
 		// find rightmost region containing 'addr'
 		for (l = *region_right;
 		     l > *region_left && stabs[l].n_type != type;
@@ -138,7 +139,7 @@ debuginfo_eip(uintptr_t addr, struct Eipdebuginfo *info)
 
 	// Search the entire set of stabs for the source file (type N_SO).
 	lfile = 0;
-	rfile = (stab_end - stabs) - 1;
+	rfile = (stab_end - stabs) - 1; // minus one because stab_end is addr just after the end of .stab and we're using zero-indexing
 	stab_binsearch(stabs, &lfile, &rfile, N_SO, addr);
 	if (lfile == 0)
 		return -1;
@@ -155,7 +156,7 @@ debuginfo_eip(uintptr_t addr, struct Eipdebuginfo *info)
 		if (stabs[lfun].n_strx < stabstr_end - stabstr)
 			info->eip_fn_name = stabstr + stabs[lfun].n_strx;
 		info->eip_fn_addr = stabs[lfun].n_value;
-		addr -= info->eip_fn_addr;
+		addr -= info->eip_fn_addr; // SLINE is using addr relative (to function) not absolute
 		// Search within the function definition for the line number.
 		lline = lfun;
 		rline = rfun;
@@ -179,7 +180,14 @@ debuginfo_eip(uintptr_t addr, struct Eipdebuginfo *info)
 	//	Look at the STABS documentation and <inc/stab.h> to find
 	//	which one.
 	// Your code here.
+	stab_binsearch(stabs, &lline, &rline, N_SLINE, addr);
 
+    if (lline <= rline)
+    {
+        info->eip_line = stabs[rline].n_desc;
+    } else {
+		return -1;
+	}
 
 	// Search backwards from the line number for the relevant filename
 	// stab.
@@ -197,7 +205,7 @@ debuginfo_eip(uintptr_t addr, struct Eipdebuginfo *info)
 	// Set eip_fn_narg to the number of arguments taken by the function,
 	// or 0 if there was no containing function.
 	if (lfun < rfun)
-		for (lline = lfun + 1;
+		for (lline = lfun + 1; // lfun has type of N_FUN so skip it by + 1
 		     lline < rfun && stabs[lline].n_type == N_PSYM;
 		     lline++)
 			info->eip_fn_narg++;

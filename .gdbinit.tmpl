@@ -28,3 +28,8 @@ target remote localhost:1234
 # for instructions on building GDB with ELF support.
 echo + symbol-file obj/kern/kernel\n
 symbol-file obj/kern/kernel
+# Added this to debug bootloader too
+echo + symbol-file obj/boot/boot.out\n
+add-symbol-file obj/boot/boot.out 0x7c00
+# to find textaddress:
+# objdump -t boot.out | grep .text

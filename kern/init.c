@@ -27,6 +27,7 @@ i386_init(void)
 	// Before doing anything else, complete the ELF loading process.
 	// Clear the uninitialized global data (BSS) section of our program.
 	// This ensures that all static/global variables start out zero.
+	// It is the responsibility of a loader to initialize the bss section to zero.
 	memset(edata, 0, end - edata);
 
 	// Initialize the console.
@@ -34,6 +35,10 @@ i386_init(void)
 	cons_init();
 
 	cprintf("6828 decimal is %o octal!\n", 6828);
+	// cprintf("512  decimal is %-5d decimal!\n", 512);
+
+	unsigned int i_test = 0x000a646c72; // little-endian
+    cprintf("H%x Wo%s", 57616, &i_test); //57616=0xe110
 
 	// Test the stack backtrace function (lab 1 only)
 	test_backtrace(5);

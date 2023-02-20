@@ -39,13 +39,16 @@ printnum(void (*putch)(int, void*), void *putdat,
 	// first recursively print all preceding (more significant) digits
 	if (num >= base) {
 		printnum(putch, putdat, num / base, base, width - 1, padc);
+	// the deepest recursion level will be the first digit (since it can take on so many division by base)
 	} else {
 		// print any needed pad characters before first digit
+		// for simplicity we don't handle things like if padc='-' in "%-5d", we just simply print out the padc
+		// width is properly deducted when calling printnum recursively
 		while (--width > 0)
 			putch(padc, putdat);
 	}
 
-	// then print this (the least significant) digit
+	// print current digit
 	putch("0123456789abcdef"[num % base], putdat);
 }
 
@@ -89,13 +92,16 @@ vprintfmt(void (*putch)(int, void*), void *putdat, const char *fmt, va_list ap)
 	char padc;
 
 	while (1) {
+		// print out everything in the format string until we encounter the first '%'
 		while ((ch = *(unsigned char *) fmt++) != '%') {
+			// in case the format string doesn't need any formatting, we're done
 			if (ch == '\0')
 				return;
 			putch(ch, putdat);
 		}
 
 		// Process a %-escape sequence
+		// Reset the below variables when encounters a '%'
 		padc = ' ';
 		width = -1;
 		precision = -1;
@@ -124,6 +130,12 @@ vprintfmt(void (*putch)(int, void*), void *putdat, const char *fmt, va_list ap)
 		case '7':
 		case '8':
 		case '9':
+			// The for loop below is to cater for precision that has more than one digit.
+			// For example "123" should be stored in precision as integer 123
+			// (execution like this 1, 1*10+2=12, 12*10+3=123).
+			// In the first run like "123.4", precision=123, and then process_precision
+			// will make width=precision=123, and set precision=-1
+			// this is to use the same loop below to get both width and precision (if any)
 			for (precision = 0; ; ++fmt) {
 				precision = precision * 10 + ch - '0';
 				ch = *fmt;
@@ -165,24 +177,32 @@ vprintfmt(void (*putch)(int, void*), void *putdat, const char *fmt, va_list ap)
 			err = va_arg(ap, int);
 			if (err < 0)
 				err = -err;
+			// if out of range of error_string array or if a particular entry in error_string is NULL
+			// just print out the error number back
 			if (err >= MAXERROR || (p = error_string[err]) == NULL)
 				printfmt(putch, putdat, "error %d", err);
 			else
+				// due to short-circuiting above, p is assigned with error_string[err]
 				printfmt(putch, putdat, "%s", p);
 			break;
 
 		// string
 		case 's':
+			// empty string
 			if ((p = va_arg(ap, char *)) == NULL)
 				p = "(null)";
+			// print out padding for the case of right-aligning where padc != '-'
 			if (width > 0 && padc != '-')
 				for (width -= strnlen(p, precision); width > 0; width--)
 					putch(padc, putdat);
+			// precision=-1 if no precision specified
 			for (; (ch = *p++) != '\0' && (precision < 0 || --precision >= 0); width--)
+				// the thing after the && is to check if we have non-printable ASCII characters like [DEL]
 				if (altflag && (ch < ' ' || ch > '~'))
 					putch('?', putdat);
 				else
 					putch(ch, putdat);
+			// print out remaining padding for the case where padc = '-' (left-aligned)
 			for (; width > 0; width--)
 				putch(' ', putdat);
 			break;
@@ -206,10 +226,10 @@ vprintfmt(void (*putch)(int, void*), void *putdat, const char *fmt, va_list ap)
 		// (unsigned) octal
 		case 'o':
 			// Replace this with your code.
-			putch('X', putdat);
-			putch('X', putdat);
-			putch('X', putdat);
-			break;
+			if (altflag) putch('0', putdat);
+			num = getuint(&ap, lflag);
+			base = 8;
+			goto number;
 
 		// pointer
 		case 'p':
@@ -222,6 +242,11 @@ vprintfmt(void (*putch)(int, void*), void *putdat, const char *fmt, va_list ap)
 
 		// (unsigned) hexadecimal
 		case 'x':
+			if (altflag)
+			{
+				putch('0', putdat);
+				putch('x', putdat);
+			}
 			num = getuint(&ap, lflag);
 			base = 16;
 		number:
@@ -236,6 +261,7 @@ vprintfmt(void (*putch)(int, void*), void *putdat, const char *fmt, va_list ap)
 		// unrecognized escape sequence - just print it literally
 		default:
 			putch('%', putdat);
+			// go back until the fmt points to the character just before '%'
 			for (fmt--; fmt[-1] != '%'; fmt--)
 				/* do nothing */;
 			break;
@@ -259,6 +285,7 @@ struct sprintbuf {
 	int cnt;
 };
 
+// instead of printing to console, write it to buffer
 static void
 sprintputch(int ch, struct sprintbuf *b)
 {
@@ -270,6 +297,7 @@ sprintputch(int ch, struct sprintbuf *b)
 int
 vsnprintf(char *buf, int n, const char *fmt, va_list ap)
 {
+	// it is the responsibility of caller to make sure buf has at least size of n
 	struct sprintbuf b = {buf, buf+n-1, 0};
 
 	if (buf == NULL || n < 1)

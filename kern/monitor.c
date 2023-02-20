@@ -24,6 +24,7 @@ struct Command {
 static struct Command commands[] = {
 	{ "help", "Display this list of commands", mon_help },
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
+	{ "backtrace", "Display backtrace info", mon_backtrace}
 };
 
 /***** Implementations of basic kernel monitor commands *****/
@@ -58,6 +59,45 @@ int
 mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 {
 	// Your code here.
+	uint32_t *ebp;
+	struct Eipdebuginfo info;
+	// ebp is the content of register %ebp
+	// ebp holds the base esp of current frame (esp when we first arrive at the called function)
+	// if we dereference ebp then we get the ebp of previous frame
+	ebp = (uint32_t *) read_ebp(); 
+	
+	cprintf("Stack backtrace:\n");
+	// cprintf("--> Address growth\n");
+	// cprintf("<-- Stack growth\n");
+	// cprintf("| %-10s ", "ebp");
+	// cprintf("| %-10s ", "eip");
+	// cprintf("| %-10s ", "args[0]");
+	// cprintf("| %-10s ", "args[1]");
+	// cprintf("| %-10s ", "args[2]");
+	// cprintf("| %-10s ", "args[3]");
+	// cprintf("| %-10s ", "args[4]");
+	// cprintf("|\n");
+	while (ebp != NULL)
+	{
+		// cprintf("| %#8x ", ebp);
+		// for (int i=1; i<=6; i++)
+		// {
+		// 	cprintf("| %0#8x ", *(ebp+i));
+		// }
+		// cprintf("|\n");
+
+		cprintf("  ebp %08x  eip %08x  args %08x %08x %08x %08x %08x\n", ebp, ebp[1], ebp[2], ebp[3], ebp[4], ebp[5], ebp[6]);
+		
+		// ebp[1] is the return address eip
+		if (debuginfo_eip(ebp[1], &info) == 0){
+			cprintf("\t%s:%d: %.*s+%x\n", info.eip_file, info.eip_line, info.eip_fn_namelen, info.eip_fn_name, ebp[1] - info.eip_fn_addr);
+		} else {
+			cprintf("Error in mon_backtrace: eip %#8x doesn't exist in debuginfo.\n", ebp[1]);
+		}
+		// cprintf("\n");
+		ebp = (uint32_t *) *ebp;
+	}
+
 	return 0;
 }
 
@@ -68,11 +108,12 @@ mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 #define WHITESPACE "\t\r\n "
 #define MAXARGS 16
 
+// buf is a line of command
 static int
 runcmd(char *buf, struct Trapframe *tf)
 {
 	int argc;
-	char *argv[MAXARGS];
+	char *argv[MAXARGS]; // array of char*
 	int i;
 
 	// Parse the command buffer into whitespace-separated arguments
@@ -80,24 +121,24 @@ runcmd(char *buf, struct Trapframe *tf)
 	argv[argc] = 0;
 	while (1) {
 		// gobble whitespace
-		while (*buf && strchr(WHITESPACE, *buf))
-			*buf++ = 0;
-		if (*buf == 0)
+		while (*buf && strchr(WHITESPACE, *buf)) // if current character is not null and the && is to check if current character is WHITESPACEs
+			*buf++ = 0; // if so, replace whitespace with null so that we don't consider it again in the next while loop
+		if (*buf == 0) // null
 			break;
 
 		// save and scan past next arg
-		if (argc == MAXARGS-1) {
+		if (argc == MAXARGS-1) { // minus one due to zero-indexing
 			cprintf("Too many arguments (max %d)\n", MAXARGS);
 			return 0;
 		}
 		argv[argc++] = buf;
-		while (*buf && !strchr(WHITESPACE, *buf))
+		while (*buf && !strchr(WHITESPACE, *buf)) // skip non-WHITESPACE characters since we already took it in the line above
 			buf++;
 	}
 	argv[argc] = 0;
 
 	// Lookup and invoke the command
-	if (argc == 0)
+	if (argc == 0) // e.g. when you press enter or all whitespaces
 		return 0;
 	for (i = 0; i < ARRAY_SIZE(commands); i++) {
 		if (strcmp(argv[0], commands[i].name) == 0)
@@ -117,6 +158,8 @@ monitor(struct Trapframe *tf)
 
 
 	while (1) {
+		// buf is a copy of the static buf used in readline.c 
+		// (copy of static char buf[BUFLEN];)
 		buf = readline("K> ");
 		if (buf != NULL)
 			if (runcmd(buf, tf) < 0)

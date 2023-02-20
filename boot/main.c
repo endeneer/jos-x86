@@ -55,7 +55,7 @@ bootmain(void)
 		// as the physical address)
 		readseg(ph->p_pa, ph->p_memsz, ph->p_offset);
 
-	// call the entry point from the ELF header
+	// call the entry point from the ELF header (e_entry is a virtual address)
 	// note: does not return!
 	((void (*)(void)) (ELFHDR->e_entry))();
 
