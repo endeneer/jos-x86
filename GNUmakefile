@@ -179,9 +179,14 @@ print-qemu:
 print-gdbport:
 	@echo $(GDBPORT)
 
+cscope:
+	@find . -name "*.[chS]" > cscope.files
+	@cscope -bkq -i cscope.files -f cscope.out
+
 # For deleting the build
 clean:
 	rm -rf $(OBJDIR) .gdbinit jos.in qemu.log
+	@rm -f cscope*
 
 realclean: clean
 	rm -rf lab$(LAB).tar.gz \
