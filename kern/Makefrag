@@ -7,9 +7,13 @@
 
 OBJDIRS += kern
 
+# -nostdlib means do not use the standard system startup files or libraries when linking
 KERN_LDFLAGS := $(LDFLAGS) -T kern/kernel.ld -nostdlib
 
 # entry.S must be first, so that it's the first code in the text segment!!!
+# hmm... I don't think entry.S has to be first, because _start handled this problem.
+# in fact, when you objdump -d kernel
+# you will see that the first code in the text segment is not <entry>
 #
 # We also snatch the use of a couple handy source files
 # from the lib directory, to avoid gratuitous code duplication.
@@ -38,13 +42,19 @@ KERN_SRCFILES := $(wildcard $(KERN_SRCFILES))
 # Binary program images to embed within the kernel.
 KERN_BINFILES := 
 
+# replace .c with .o (not every file in KERN_SRCFILES is .c, which brings us to next explanation)
+# replace .S with .o
 KERN_OBJFILES := $(patsubst %.c, $(OBJDIR)/%.o, $(KERN_SRCFILES))
 KERN_OBJFILES := $(patsubst %.S, $(OBJDIR)/%.o, $(KERN_OBJFILES))
+# e.g. obj/lib/printfmt.o becomes obj/kern/printfmt.o (it's like built-in kernel module)
 KERN_OBJFILES := $(patsubst $(OBJDIR)/lib/%, $(OBJDIR)/kern/%, $(KERN_OBJFILES))
 
+# basically remove the prefix $(OBJDIR)/, we just want the those .o file names without directory path prefix
 KERN_BINFILES := $(patsubst %, $(OBJDIR)/%, $(KERN_BINFILES))
 
 # How to build kernel object files
+# .vars. are trick to make sure target is run after changig CFLAGS
+# could have put Makefile itself as the dependency, but it's probably overkill
 $(OBJDIR)/kern/%.o: kern/%.c $(OBJDIR)/.vars.KERN_CFLAGS
 	@echo + cc $<
 	@mkdir -p $(@D)
@@ -65,6 +75,10 @@ $(OBJDIR)/kern/init.o: override KERN_CFLAGS+=$(INIT_CFLAGS)
 $(OBJDIR)/kern/init.o: $(OBJDIR)/.vars.INIT_CFLAGS
 
 # How to build the kernel itself
+# you may have noticed that objdump -S only works in the top directory, this is
+# due to how objdump -S hardcoded path to sources, if we need to run it in a directory which is different from where an output was compiled from 
+# we need to specify path, e.g. we are in obj/kern and we'd like to use objdump -S, then we can use the undocumented -I option like so
+# objdump -I ../../kern -S kernel | less
 $(OBJDIR)/kern/kernel: $(KERN_OBJFILES) $(KERN_BINFILES) kern/kernel.ld \
 	  $(OBJDIR)/.vars.KERN_LDFLAGS
 	@echo + ld $@
@@ -73,6 +87,10 @@ $(OBJDIR)/kern/kernel: $(KERN_OBJFILES) $(KERN_BINFILES) kern/kernel.ld \
 	$(V)$(NM) -n $@ > $@.sym
 
 # How to build the kernel disk image
+# zero out (more like allocate) the first 10,000 blocks (default bs = 512 bytes)
+# conv=notrunc to avoid truncation of remaining empty blocks after dd if 1st block (the boot sector)
+# since boot is 512 bytes, this means the first block will be boot sector
+# seek=1 to skip the first sector which has been used by boot sector
 $(OBJDIR)/kern/kernel.img: $(OBJDIR)/kern/kernel $(OBJDIR)/boot/boot
 	@echo + mk $@
 	$(V)dd if=/dev/zero of=$(OBJDIR)/kern/kernel.img~ count=10000 2>/dev/null
@@ -84,6 +102,7 @@ all: $(OBJDIR)/kern/kernel.img
 
 grub: $(OBJDIR)/jos-grub
 
+# Every section's VMA=VMA+0x10000000 and LMA=LMA+VMA=VMA+0x10000000
 $(OBJDIR)/jos-grub: $(OBJDIR)/kern/kernel
 	@echo + oc $@
 	$(V)$(OBJCOPY) --adjust-vma=0x10000000 $^ $@

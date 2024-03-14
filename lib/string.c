@@ -18,6 +18,8 @@ strlen(const char *s)
 	return n;
 }
 
+// bounded version of strlen, calculate length up to size only even if the string s is longer than size
+// useful for printing with precision specified
 int
 strnlen(const char *s, size_t size)
 {
@@ -95,10 +97,10 @@ strncmp(const char *p, const char *q, size_t n)
 		return (int) ((unsigned char) *p - (unsigned char) *q);
 }
 
-// Return a pointer to the first occurrence of 'c' in 's',
+// Return a pointer to the first occurrence of 'c' in 's' (the string starting on first occurence onwards),
 // or a null pointer if the string has no 'c'.
 char *
-strchr(const char *s, char c)
+strchr(const char *s, char c) // where c is not null character
 {
 	for (; *s; s++)
 		if (*s == c)

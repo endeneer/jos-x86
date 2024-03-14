@@ -8,10 +8,18 @@ ENTRY(_start)
 SECTIONS
 {
 	/* Link the kernel at this address: "." means the current address */
+	/* 0xF0100000 is virtual address aka logical address that program will generate*/
 	. = 0xF0100000;
 
 	/* AT(...) gives the load address of this section, which tells
 	   the boot loader where to load the kernel in physical memory */
+	/* 0x100000 will affect the paddr in entries of program header
+	   i.e. p_pa in readseg(ph->p_pa, ph->p_memsz, ph->p_offset);
+	   use objdump -x kernel to see the program header, 
+	   LOAD tells what a loader needs to load into physical memory
+	   while paddr tells where to load
+	   of course the loader can be a punk and don't follow and let bad things happen LOL
+	*/
 	.text : AT(0x100000) {
 		*(.text .stub .text.* .gnu.linkonce.t.*)
 	}

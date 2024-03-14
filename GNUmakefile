@@ -48,6 +48,7 @@ GCCPREFIX := $(shell if i386-jos-elf-objdump -i 2>&1 | grep '^elf32-i386$$' >/de
 endif
 
 # try to infer the correct QEMU
+# e.g. /usr/local/bin/qemu-system-i386
 ifndef QEMU
 QEMU := $(shell if which qemu >/dev/null 2>&1; \
 	then echo qemu; exit; \
@@ -83,7 +84,8 @@ PERL	:= perl
 # Compiler flags
 # -fno-builtin is required to avoid refs to undefined functions in the kernel.
 # Only optimize to -O1 to discourage inlining, which complicates backtraces.
-CFLAGS := $(CFLAGS) $(DEFS) $(LABDEFS) -O1 -fno-builtin -I$(TOP) -MD
+# I changed to -O0 because I want to debug/watch everything
+CFLAGS := $(CFLAGS) $(DEFS) $(LABDEFS) -O0 -fno-builtin -I$(TOP) -MD
 CFLAGS += -fno-omit-frame-pointer
 CFLAGS += -std=gnu99
 CFLAGS += -static
@@ -93,6 +95,8 @@ CFLAGS += -Wall -Wno-format -Wno-unused -Werror -gstabs -m32
 CFLAGS += -fno-tree-ch
 
 # Add -fno-stack-protector if the option exists.
+# -E stops after preprocessing stage (we are just testing, so no need to do so much)
+# -x c specifies explicitly the language of the /dev/null LOL
 CFLAGS += $(shell $(CC) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
 
 # Common linker flags
@@ -107,8 +111,8 @@ GCC_LIB := $(shell $(CC) $(CFLAGS) -print-libgcc-file-name)
 OBJDIRS :=
 
 # Make sure that 'all' is the first target
+# nah, just use .DEFAULT_GOAL := all
 all:
-
 # Eliminate default suffix rules
 .SUFFIXES:
 
@@ -124,14 +128,20 @@ KERN_CFLAGS := $(CFLAGS) -DJOS_KERNEL -gstabs
 USER_CFLAGS := $(CFLAGS) -DJOS_USER -gstabs
 
 # Update .vars.X if variable X has changed since the last make run.
-#
+# 
 # Rules that use variable X should depend on $(OBJDIR)/.vars.X.  If
 # the variable's value has changed, this will update the vars file and
 # force a rebuild of the rule that depends on it.
+# $* is what's extracted with %
+# https://www.gnu.org/software/make/manual/html_node/Automatic-Variables.html
+# e.g. for .vars.KERN_CFLAGS, it will echo $(KERN_CFLAGS) and gets compared with .vars.KERN_CFLAGS
+# || is to make sure previous command succeed before the subsequent command execution
+# this is to make sure target is run when there is change in CFLAGS
 $(OBJDIR)/.vars.%: FORCE
 	$(V)echo "$($*)" | cmp -s $@ || echo "$($*)" > $@
+# .PRECIOUS is not deleted if make is killed/interrupted, or if the target is an intermediate file
 .PRECIOUS: $(OBJDIR)/.vars.%
-.PHONY: FORCE
+.PHONY: FORCE # same as writing FORCE:
 
 
 # Include Makefrags for subdirectories
@@ -147,8 +157,12 @@ QEMUOPTS += $(QEMUEXTRA)
 .gdbinit: .gdbinit.tmpl
 	sed "s/localhost:1234/localhost:$(GDBPORT)/" < $^ > $@
 
+# -n to tell GDB to not execute any .gdbinit (e.g. ~/.gdbinit)
+# instead, use -x to explicitly tell GDB execute commands from the specified .gdbinit only
 gdb:
 	gdb -n -x .gdbinit
+gdb-tui:
+	gdb -n -x .gdbinit -tui
 
 pre-qemu: .gdbinit
 
@@ -161,6 +175,8 @@ qemu-nox: $(IMAGES) pre-qemu
 	@echo "***"
 	$(QEMU) -nographic $(QEMUOPTS)
 
+# -S to freeze CPU at startup (use 'c' to start execution)
+# which means we can debug BIOS
 qemu-gdb: $(IMAGES) pre-qemu
 	@echo "***"
 	@echo "*** Now run 'make gdb'." 1>&2
@@ -297,7 +313,9 @@ myapi.key:
 #handin-prep:
 #	@./handin-prep
 
-
+# Below is done so that makefile will recompile when
+# there is changes in header files instead of recompile
+# only when there is changes in source files.
 # This magic automatically generates makefile dependencies
 # for header files included from C source files we compile,
 # and keeps those dependencies up-to-date every time we recompile.
@@ -305,7 +323,10 @@ myapi.key:
 $(OBJDIR)/.deps: $(foreach dir, $(OBJDIRS), $(wildcard $(OBJDIR)/$(dir)/*.d))
 	@mkdir -p $(@D)
 	@$(PERL) mergedep.pl $@ $^
-
+# First make will always do the above first,
+# Because the .deps is non-existent and 
+# include needs it, so it looks for recipe to 
+# generate .deps, which is as above.
 -include $(OBJDIR)/.deps
 
 always:

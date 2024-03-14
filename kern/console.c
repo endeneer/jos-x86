@@ -317,7 +317,9 @@ kbd_proc_data(void)
 {
 	int c;
 	uint8_t stat, data;
-	static uint32_t shift;
+	// shift is merely a set of bits for flagging purpose
+	// static so that we can process more than one bytes
+	static uint32_t shift; 
 
 	stat = inb(KBSTATP);
 	if ((stat & KBS_DIB) == 0)
@@ -327,31 +329,44 @@ kbd_proc_data(void)
 		return -1;
 
 	data = inb(KBDATAP);
+	// cprintf("DEBUG KBDATAP:%#x\n", data);
 
+	// Scan Code Set 1 
+	// https://www.win.tue.nl/~aeb/linux/kbd/scancodes-10.html
+	// If the make code of a key is c, the break code will be c+0x80. 
+	// If the make code is e0 c, the break code will be e0 c+0x80. 
 	if (data == 0xE0) {
-		// E0 escape character
+		// E0 escape character (i.e. the 0xE0 only, not 0xE0 folllowed by escape character LOL)
 		shift |= E0ESC;
-		return 0;
+		return 0; // recall that in cons_intr if (c == 0) continue;
 	} else if (data & 0x80) {
+		// Break code goes here (for both formats 'c' or 'E0 c')
 		// Key released
-		data = (shift & E0ESC ? data : data & 0x7F);
-		shift &= ~(shiftcode[data] | E0ESC);
+		data = (shift & E0ESC ? data : data & 0x7F); // for normal make code c, no need to take 0x7F, else needed for shiftcode lookup
+		shift &= ~(shiftcode[data] | E0ESC); // unset the flag for CTL/SHIFT/ALT and E0ESC
 		return 0;
 	} else if (shift & E0ESC) {
+		// Make code with E0 c format goes here
 		// Last character was an E0 escape; or with 0x80
+		// this is done so that we won't crash in map
+		// e.g make code for PgDn = 0xE0 0x51, if we took data to be 0x51,
+		// then we will crash with '2' (KP-2)
+		// let's just use its breakcode as index in the map since break code won't come here and thus won't consult any charcode map anyway
 		data |= 0x80;
-		shift &= ~E0ESC;
-	}
+		shift &= ~E0ESC; // unset the bit corresponding to E0ESC flag
+	} // else we have normal breakcode c
 
-	shift |= shiftcode[data];
-	shift ^= togglecode[data];
+	shift |= shiftcode[data]; // if CTL/SHIFT/ALT is pressed, set the flag accordingly in shift
+	shift ^= togglecode[data]; // if CAPSLOCK/NUMLOCK/SCROLLOCK is pressed, toggle the flag accordingly in shift
 
+	// first bracket is to decide which map to lookup
+	// if CTL and SHIFT at the same time, CTL wins
 	c = charcode[shift & (CTL | SHIFT)][data];
 	if (shift & CAPSLOCK) {
 		if ('a' <= c && c <= 'z')
-			c += 'A' - 'a';
+			c += 'A' - 'a'; // deducting ('A' < 'a') to transform small letter to capital letter
 		else if ('A' <= c && c <= 'Z')
-			c += 'a' - 'A';
+			c += 'a' - 'A'; // adding to transform capital letter to small letter
 	}
 
 	// Process special keys
@@ -361,6 +376,7 @@ kbd_proc_data(void)
 		outb(0x92, 0x3); // courtesy of Chris Frost
 	}
 
+	// cprintf("DEBUG c:%#x\n", c);
 	return c;
 }
 
@@ -386,17 +402,19 @@ kbd_init(void)
 
 static struct {
 	uint8_t buf[CONSBUFSIZE];
-	uint32_t rpos;
-	uint32_t wpos;
+	uint32_t rpos; // next reading position
+	uint32_t wpos; // next writing position 
 } cons;
 
 // called by device interrupt routines to feed input characters
 // into the circular console input buffer.
+// proc is function to get a character
 static void
 cons_intr(int (*proc)(void))
 {
 	int c;
 
+	// use proc function multiple times to get multiple characters available at the moment
 	while ((c = (*proc)()) != -1) {
 		if (c == 0)
 			continue;
@@ -432,7 +450,12 @@ cons_getc(void)
 static void
 cons_putc(int c)
 {
-	serial_putc(c);
+	// '\b' only moves cursor back but not handle emptying out the character
+	if(c == '\b') {
+		serial_putc('\b'); serial_putc(' '); serial_putc('\b');
+	} else {
+		serial_putc(c);
+	}
 	lpt_putc(c);
 	cga_putc(c);
 }

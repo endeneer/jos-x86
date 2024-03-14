@@ -9,6 +9,11 @@ OBJDIRS += boot
 
 BOOT_OBJS := $(OBJDIR)/boot/boot.o $(OBJDIR)/boot/main.o
 
+# -c means not to run linker
+# @D is to get directory that the target $@ is in
+# -Os is optimization that minimize size even at the expense of speed
+# notice we don't use optimization when compiling .S file but for .c only
+# -s removes all symbo table and relocation information from the executable
 $(OBJDIR)/boot/%.o: boot/%.c
 	@echo + cc -Os $<
 	@mkdir -p $(@D)
@@ -19,10 +24,18 @@ $(OBJDIR)/boot/%.o: boot/%.S
 	@mkdir -p $(@D)
 	$(V)$(CC) -nostdinc $(KERN_CFLAGS) -c -o $@ $<
 
+# GNU make uses the most specific rule regardless of declaration order
+# https://stackoverflow.com/questions/10656363/how-does-make-choose-which-rule-to-use
 $(OBJDIR)/boot/main.o: boot/main.c
 	@echo + cc -Os $<
 	$(V)$(CC) -nostdinc $(KERN_CFLAGS) -Os -c -o $(OBJDIR)/boot/main.o boot/main.c
 
+# use -Ttext to make sure correct addresses are generated (put .text at 0x7c00)
+# because we don't have a .elf loader when booting, we only have BIOS as the loader of our boot program 
+# nonsensical to write .ld for the boot program to produce .elf when there is no .elf loader
+# bootmain will become the .elf loader for kernel's .elf
+# use OBJCOPY to copy out .text section only
+# boot/sign.pl to make boot sector by padding and adding \x55\xAA to signify end of sector
 $(OBJDIR)/boot/boot: $(BOOT_OBJS)
 	@echo + ld boot/boot
 	$(V)$(LD) $(LDFLAGS) -N -e start -Ttext 0x7C00 -o $@.out $^
