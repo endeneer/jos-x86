@@ -150,6 +150,9 @@ QEMUOPTS += $(QEMUEXTRA)
 gdb:
 	gdb -n -x .gdbinit
 
+gdb-tui:
+	gdb -n -x .gdbinit -tui
+
 pre-qemu: .gdbinit
 
 qemu: $(IMAGES) pre-qemu
@@ -180,7 +183,8 @@ print-gdbport:
 	@echo $(GDBPORT)
 
 cscope:
-	@find . -name "*.[chS]" > cscope.files
+	@find . -name "*.[chS]" > cscope.files \
+		-not -path "./6.828-qemu/*"
 	@cscope -bkq -i cscope.files -f cscope.out
 
 # For deleting the build

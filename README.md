@@ -143,3 +143,28 @@ make[1]: *** [Makefile:13: de_DE.mo] Error 127
 sudo apt install gettext
 ```
 
+- Error:
+```
+ld: warning: section `.bss' type changed to PROGBITS
+ld: obj/kern/printfmt.o: in function `printnum':
+lib/printfmt.c:41: undefined reference to `__udivdi3'
+ld: lib/printfmt.c:49: undefined reference to `__umoddi3'
+make: *** [kern/Makefrag:71: obj/kern/kernel] Error 1
+```
+- Solution:  
+```
+sudo apt install gcc-multilib 
+```
+
+# References
+With notes:
+- https://github.com/gatsbyd/mit_6.828_jos_2018
+- https://github.com/woai3c/MIT6.828
+
+With homeworks:
+- https://github.com/SmallPond/MIT6.828_OS
+
+With challenges:  
+- https://github.com/hehao98/MIT6.828Labs-JOS/
+- https://www.zhihu.com/column/c_1366033351346843648
+
